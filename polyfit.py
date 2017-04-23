@@ -5,8 +5,17 @@ def make_poly(proto,x_arr,dx_arr,*args):
   # proto = target expression/function eg. sin(x), the curve wil be fitted against function of x argument (x symbol is mandatory)
   # x_arr = list of x arguments values for which there will be exact match between proto and resulting polynomial
   # dx_arr = list of x arguments values for which there will be exact match between proto first derivative and resulting polynomial first derivative
+  # *args => 'odd' = hint to solver that prototype is odd function
+  # *args => 'even' = hint to solver that prototype is even function
+  # *args => 'debug' = print equations to solve
+  # *args => 'zero-average' = make additional equation to satisfy zero error average over x range
+
   proto_diff = proto.diff()
-  a = symbols(make_coeff_symbols(len(x_arr+dx_arr)))
+  poly_order = len(x_arr+dx_arr)
+  x_range = [min(x_arr+dx_arr),max(x_arr+dx_arr)]
+  if 'zero-average' in args:
+    poly_order+=1
+  a = symbols(make_coeff_symbols(poly_order))
   # insert zeros for odd/even coefficients
   if 'even' in args:
     coeffs = [val for pair in zip([0]*len(a),list(reversed(a))) for val in pair]
@@ -26,41 +35,43 @@ def make_poly(proto,x_arr,dx_arr,*args):
     cpoly = poly_diff.subs(x,pts)
     cpoly = Add(cpoly,Mul(-1,proto_diff.subs(x,pts)))
     eqns.append(cpoly);
+  if 'zero-average' in args:
+    cpoly = integrate(poly,(x,x_range[0],x_range[1])).as_expr()
+    cpoly = Add(cpoly,Mul(-1,integrate(proto, (x,x_range[0],x_range[1]))))
+    eqns.append(cpoly);
   solution = poly.subs(solve(eqns,a))
   if 'debug' in args:
     for eqn in eqns:
-      print str(eqn) + " = 0"
-    print solution
+      print "Equation: " + str(eqn) + " = 0"
+    print "Solution: " + str(solution)
   return solution
 
 def print_metrics(proto,poly_approx,x_range,*args):
   # proto = target expression/function eg. sin(x), (x symbol is mandatory)
   # poly_approx = polynomial to test against prototype
   # x_range = [min,max] 2 element array
-  signal = Integral(poly_approx, (x,x_range[0],x_range[1])).as_sum(10,'trapezoid')
+  signal = Integral(proto, (x,x_range[0],x_range[1])).as_sum(4,'trapezoid')
   dev_fun = sqrt((proto - poly_approx)**2)
-  deviation = Integral(dev_fun, (x,x_range[0],x_range[1])).as_sum(10,'trapezoid')
-  snr = (signal/deviation)
+  deviation = Integral(dev_fun, (x,x_range[0],x_range[1])).as_sum(4,'trapezoid')
+  snr = signal/deviation
   snrdb = '%0.1f' % (20*log(snr,10))
   enob = '%0.1f' % (log(snr,2))
   print "SNR: " + str(snrdb) + " [dB]"
   print "ENOB: " + str(enob)
-  return 0
 
 def make_coeff_symbols(n,first_letter='a'):
   first = ord(first_letter)
   return ','.join(chr(i) for i in range(first,first+n))
 
+def make_poly_all(proto,x_arr,dx_arr,*args):
+  solution = make_poly(proto,x_arr,dx_arr,*args)
+  print "Float Eval: " + str(solution.evalf())
+  x_range = [min(x_arr+dx_arr),max(x_arr+dx_arr)]
+  print_metrics(proto,solution,x_range)
 
+# usage
 x = Symbol('x')
-# calculate symbolic
-poly_approx = make_poly(sin(pi*x/2),[1],[1,0],'odd','debug')
-# show coeffs as float
-print poly_approx.evalf()
-# show SNR and ENOB
-print_metrics(sin(pi*x/2),poly_approx,[0,1])
-
-#print_metrics(cos(pi*x),make_poly(cos(pi*x),[0,"1/4","1/2"],["1/4","1/2"],'even','debug'),[0,"1/2"])
-
-
-  
+#make_poly_all(sin(pi*x/2),[1],[0,1],'odd','zero-average','debug')
+#make_poly_all(cos(pi*x),["0","1/2"],["1/2"],'even','zero-average','debug')
+make_poly_all(sin(pi*x),["1/2"],[0,"1/2"],'odd','zero-average','debug')
+make_poly_all(sin(pi*x),["1/4","1/2"],[0,"1/2"],'odd','debug')
